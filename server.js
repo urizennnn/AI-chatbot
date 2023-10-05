@@ -6,19 +6,20 @@ const { SessionsClient } = require('@google-cloud/dialogflow');
 const uuid = require('uuid');
 const http = require('http').createServer(app);
 const io = require('socket.io')(http);
-
+require('dotenv').config()
 app.use(morgan('dev'));
 const projectId = process.env.PROJECT_ID;
-const credentials = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+const credentials =require('./apigen-401021-b0aa0107351c.json')
 
 const sessionClient = new SessionsClient({
     projectId: projectId,
     credentials: credentials
 });
-
+app.get('/credentials',(req,res)=>{
+    res.send(credentials).status(200)
+})
 async function detectIntent(projectId, text) {
-    const sessionId = uuid.v4();
-
+    const sessionId = uuid.v4()
     const sessionPath = sessionClient.projectAgentSessionPath(projectId, sessionId);
 
     const request = {
@@ -42,16 +43,17 @@ async function detectIntent(projectId, text) {
 }
 io.on('connection', function (socket) {
     socket.on('chat message', async (text) => {
+
         try {
-            console.log('text')
             const aiText = await detectIntent(projectId, text);
-            socket.emit('bot reply', aiText); 
+            socket.emit('bot reply', aiText);
         } catch (error) {
             console.log(error);
-            socket.emit('bot reply', "I couldn't find a reply Victor sama.");
+            socket.emit('bot reply', "I couldn't find a reply Sir.");
         }
     });
 });
+
 
 const PORT = process.env.PORT || 4000;
 
