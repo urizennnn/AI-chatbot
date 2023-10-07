@@ -6,20 +6,39 @@ const { SessionsClient } = require('@google-cloud/dialogflow');
 const uuid = require('uuid');
 const http = require('http').createServer(app);
 const io = require('socket.io')(http);
-require('dotenv').config()
-const Intent = require('./models/intents')
-const connectDB = require('./db/connect')
+const dotenv = require('dotenv');
+const Intent = require('./models/intents');
+const connectDB = require('./db/connect');
+
+dotenv.config();
 app.use(morgan('dev'));
+
 const projectId = process.env.PROJECT_ID;
-const credentials = require('./apigen-401021-b0aa0107351c.json')
+const credentials = require('./apigen-401021-b0aa0107351c.json');
+const PORT = process.env.PORT || 4000;
 
 const sessionClient = new SessionsClient({
     projectId: projectId,
     credentials: credentials
 });
+
+app.use(express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, path) => {
+        if (path.endsWith('.css')) {
+            res.setHeader('Content-Type', 'text/css');
+        }
+        if (path.endsWith('.js')) {
+            res.setHeader('Content-Type', 'application/javascript');
+        }
+    }
+}));
+
+app.use(express.static(path.join(__dirname, 'views')));
+
 app.get('/credentials', (req, res) => {
-    res.send(credentials).status(200)
-})
+    res.send(credentials).status(200);
+});
+
 async function detectIntent(projectId, text) {
     const sessionId = uuid.v4();
     const sessionPath = sessionClient.projectAgentSessionPath(projectId, sessionId);
@@ -41,14 +60,14 @@ async function detectIntent(projectId, text) {
 
         if (available.length > 0) {
             if (result.fulfillmentMessages.length === 0) {
-                // Create a new document with the merged data
                 const mergedData = [...available, { intent: text }];
                 await Intent.create({ intent: mergedData });
+                return 'I have not been trained for that yet, check back later';
             }
         } else {
             if (result.fulfillmentMessages.length === 0) {
-                // Create a new document with just the new data
                 await Intent.create({ intent: [{ intent: text }] });
+                return 'I have not been trained for that yet, check back later';
             }
         }
 
@@ -59,35 +78,30 @@ async function detectIntent(projectId, text) {
     }
 }
 
+// Socket.IO connection handling
 io.on('connection', function (socket) {
     socket.on('chat message', async (text) => {
-
         try {
             const aiText = await detectIntent(projectId, text);
             socket.emit('bot reply', aiText);
         } catch (error) {
             console.log(error);
-            socket.emit('bot reply', "I couldn't find a reply Sir.");
+            socket.emit('bot reply', "I couldn't find a reply, Sir.");
         }
     });
+    socket.on('text',async(text)=>{
+        try{
+            const aiText = await detectIntent(projectId, text)
+            socket.emit('text-reply',aiText)
+        }catch(err){
+            console.log(err)
+            socket.emit('text-reply',err)
+        }
+    })
+
+    
 });
 
-
-const PORT = process.env.PORT || 4000;
-
-// Serve static files
-app.use(express.static(path.join(__dirname, 'public'), {
-    setHeaders: (res, path) => {
-        if (path.endsWith('.css')) {
-            res.setHeader('Content-Type', 'text/css');
-        }
-        if (path.endsWith('.js')) {
-            res.setHeader('Content-Type', 'application/javascript');
-        }
-    }
-}));
-
-app.use(express.static(path.join(__dirname, 'views')));
 app.get('/test', (req, res) => {
     console.log(process.env.PROJECT_ID);
     res.status(200).json('check');
